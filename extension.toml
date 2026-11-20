@@ -1,0 +1,167 @@
+# Mail on Pointman, receiving only: each agent may claim an address, <handle>@<domain> (the `domain` setting), and
+# mail sent to it is posted to the agent in the thread it chose, as outside mail: unsigned, never a person's
+# instruction. Nothing is ever sent.
+#
+# Cloudflare's Email Routing takes the mail: one routing rule per claimed address hands it to an Email Worker
+# (worker/mail.js), which keeps the text, drops attachments and stores it in Workers KV. Every 30 s the extension
+# reads new mail from KV, posts it to its agent and deletes it. `mail.setup` deploys the Worker and its KV namespace
+# through Cloudflare's API; `mail.claim` and `mail.release` add and remove the rules. A name nobody claimed has no
+# rule, so Cloudflare refuses its mail before anything of ours runs.
+#
+# The commands' params and [settings] are written from proto/mail/v1/mail.proto (`<Verb>Params`, `Settings`) by
+# the SDK's `pointman-extension manifest write`: change the proto, then write them again.
+
+[extension]
+id = "mail"
+name = "Mail"
+version = "0.1.0"
+publisher = "aurelio"
+summary = "An email address for each agent, receiving only: mail to <handle>@<domain> is posted to the agent as outside mail, through Cloudflare."
+node = ">=0.4.12"
+platforms = ["macos-arm64", "macos-x86_64", "linux-x86_64", "linux-arm64"]
+
+[run]
+command = ["bin/mail"]
+runtime = "binary"
+
+[behavior]
+skill = "SKILL.md"
+clients = ["claude", "codex", "gemini"]
+
+[permissions]
+network = true                   # Cloudflare's API, and DNS over HTTPS for the domain's mail records
+secrets = ["mail.cloudflare"]    # the Cloudflare API token, account id and zone id
+agents = true                    # agents.sessions: the agents this machine runs, the only ones it claims for and posts to
+post = true                      # board.post: each mail, as a post from the extension's robot that mentions its agent
+
+[[credentials]]
+id = "cloudflare"
+title = "Cloudflare for mail"
+help = "At dash.cloudflare.com › My Profile › API Tokens, make a token with: Zone › Email Routing Rules › Edit, Account › Workers Scripts › Edit and Account › Workers KV Storage › Edit, for the account and the domain's zone. Paste the token, the account id and the zone id (the zone's Overview page shows both), with a space between."
+item = "mail.cloudflare"
+value = '[A-Za-z0-9_-]{32,200}\s+[0-9a-f]{32}\s+[0-9a-f]{32}'
+placeholder = "token account-id zone-id"
+
+[[commands]]
+kind = "mail.claim"
+title = "Claim an agent's own address (agent, thread)"
+slash = "claim"
+summary = "The address <agent>@<domain>, its mail posted in a thread: claim only your own"
+
+# From ClaimParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
+[commands.params]
+type = "object"
+description = "mail.claim: an agent's own address, <handle>@<domain>, with its mail posted in a thread. Claim only your own."
+additionalProperties = false
+
+[commands.params.properties.agent]
+type = "string"
+description = "The agent's handle, without the @ (atlas): the address is atlas@<domain>. It must be an agent this machine runs."
+minLength = 1
+maxLength = 32
+pattern = "^[a-z0-9][a-z0-9_-]*$"
+
+[commands.params.properties.thread]
+type = "string"
+description = "The thread its mail is posted in (thr_123 or 123). Everyone in that thread reads the mail: pick one meant for it."
+minLength = 1
+maxLength = 24
+pattern = "^(thr_)?[1-9][0-9]*$"
+
+[[commands]]
+kind = "mail.release"
+title = "Release an agent's address (agent)"
+slash = "release"
+summary = "The address goes, and the mail waiting for it is deleted"
+
+# From ReleaseParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
+[commands.params]
+type = "object"
+description = "mail.release: an agent's address goes, with the mail waiting for it. Release only your own."
+additionalProperties = false
+
+[commands.params.properties.agent]
+type = "string"
+description = "The agent's handle, without the @."
+minLength = 1
+maxLength = 32
+pattern = "^[a-z0-9][a-z0-9_-]*$"
+
+[[commands]]
+kind = "mail.addresses"
+title = "Agents with an address"
+slash = "addresses"
+summary = "Every claimed address, its agent and the thread its mail goes to"
+
+# From AddressesParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
+[commands.params]
+type = "object"
+description = "mail.addresses: every agent with an address, and the thread its mail goes to."
+additionalProperties = false
+
+[[commands]]
+kind = "mail.setup"
+title = "Deploy the mail Worker and its KV namespace"
+slash = "setup"
+summary = "Makes or updates the Email Worker and its KV namespace at Cloudflare"
+
+# From SetupParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
+[commands.params]
+type = "object"
+description = "mail.setup: the Worker that takes the mail and its KV namespace, made or brought up to date at Cloudflare."
+additionalProperties = false
+
+[[commands]]
+kind = "mail.status"
+title = "Is mail working: Worker, KV and the domain's records"
+slash = "status"
+summary = "Whether the Worker, its KV namespace and the domain's mail records are there, and the day's limits"
+
+# From StatusParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
+[commands.params]
+type = "object"
+description = "mail.status: whether the Worker, its KV namespace and the domain's mail records are there, and today's numbers."
+additionalProperties = false
+
+[[commands]]
+kind = "mail.add"
+title = "Add Cloudflare for mail"
+slash = "add"
+form = "cloudflare"
+summary = "The Cloudflare API token, account id and zone id, kept in the vault"
+
+# From AddParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
+[commands.params]
+type = "object"
+description = "mail.add: the Cloudflare API token, account id and zone id, added in the apps."
+additionalProperties = false
+
+# From Settings in proto/mail/v1/mail.proto: `pointman-extension manifest write`
+[settings]
+type = "object"
+description = "The extension's settings, per machine. Run mail.setup again after changing daily or max_chars: the Worker reads them."
+additionalProperties = false
+
+[settings.properties.domain]
+type = "string"
+description = "The domain agents' addresses are on: each is <handle>@<domain> (james.pointman.network). Cloudflare's Email Routing must be on for it."
+maxLength = 64
+pattern = '^([a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+)?$'
+
+[settings.properties.worker]
+type = "string"
+description = "The Worker's name at Cloudflare, and its KV namespace's title. Empty: pointman-mail."
+maxLength = 63
+pattern = "^([a-z0-9][a-z0-9-]*)?$"
+
+[settings.properties.daily]
+type = "integer"
+description = "Mails a day one address takes; the rest are refused. 0: 50."
+minimum = 0
+maximum = 300
+
+[settings.properties.max_chars]
+type = "integer"
+description = "A mail's text kept, in characters; the rest is cut and the post says so. 0: 20000."
+minimum = 0
+maximum = 30000
