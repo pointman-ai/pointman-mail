@@ -1,8 +1,9 @@
 // The mail extension's Email Worker: Cloudflare's Email Routing hands it each mail sent to a claimed address. It
-// keeps the sender, the recipient, the subject, the text (the HTML as text when there's no text part) and the
-// Authentication-Results header, drops attachments (their names are kept), cuts the text at MAX_CHARS, and stores
-// it as JSON in Workers KV under mail/<local part>/<time>-<id>, where the extension collects it. An address takes at
-// most DAILY mails a UTC day; the rest are refused. It never replies or forwards.
+// keeps the sender, the header's From, the recipient, the subject, the text (the HTML as text when there's no text
+// part) and Cloudflare's own Authentication-Results header, drops attachments (their names are kept), cuts the text
+// at MAX_CHARS, and stores it as JSON in Workers KV under mail/<local part>/<time>-<id>, where the extension collects
+// it. Stored mail expires after KEEP_DAYS, so mail nobody collects doesn't stay. An address takes at most DAILY mails
+// a UTC day, and a mail at most MAX_BYTES; the rest are refused, unread. It never replies or forwards.
 //
 // KV's free tier writes 1,000 keys a day, so each mail costs three: the mail, its address's count for the day, and
 // mail/latest (the newest mail's key), which is the one key the extension reads every 30 s instead of listing.
@@ -10,6 +11,8 @@
 import { latin1, parse } from "./parse.js";
 
 const DAY_SECONDS = 86400;
+const KEEP_DAYS = 7;
+const MB = 1024 * 1024;
 
 function number(value, fallback) {
   const n = parseInt(value, 10);
@@ -26,7 +29,14 @@ export default {
   async email(message, env) {
     const daily = number(env.DAILY, 50);
     const most = number(env.MAX_CHARS, 20000);
+    const maxBytes = number(env.MAX_BYTES, 5 * MB);
     const to = String(message.to).toLowerCase();
+    if (message.rawSize > maxBytes) {
+      // refused before it's read: the free plan's CPU time per mail is short
+      const mb = (n) => `${Math.round((n / MB) * 10) / 10} MB`;
+      message.setReject(`${to} takes mails up to ${mb(maxBytes)}; this one is ${mb(message.rawSize)}`);
+      return;
+    }
     const local = to.split("@")[0];
     const now = new Date();
     const countKey = `count/${local}/${now.toISOString().slice(0, 10)}`;
@@ -41,11 +51,12 @@ export default {
     const cut = Math.max(0, chars.length - most);
     const stored = {
       from: String(message.from),
+      header_from: mail.from,
       to,
       subject: mail.subject,
       date: mail.date,
       message_id: mail.messageId,
-      auth: mail.auth || message.headers.get("authentication-results") || "",
+      auth: mail.auth,
       text: cut ? chars.slice(0, most).join("") : mail.text,
       cut,
       attachments: mail.attachments,
@@ -53,7 +64,7 @@ export default {
       received: now.toISOString(),
     };
     const key = `mail/${local}/${String(now.getTime()).padStart(13, "0")}-${id()}`;
-    await env.MAIL.put(key, JSON.stringify(stored));
+    await env.MAIL.put(key, JSON.stringify(stored), { expirationTtl: KEEP_DAYS * DAY_SECONDS });
     await env.MAIL.put(countKey, String(count + 1), { expirationTtl: 2 * DAY_SECONDS });
     try {
       // one write a second to a key: a mail arriving in the same second still gets collected by the next full list

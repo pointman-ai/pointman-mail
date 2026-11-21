@@ -127,7 +127,26 @@ function walk(binary, found, files, depth = 0) {
   (type.type === "text/plain" ? found.plain : found.html).push(text);
 }
 
-/** A raw message (a binary string) as {subject, date, messageId, auth, text, attachments}. */
+/** The id Cloudflare's Email Routing names itself by in the Authentication-Results header it adds. */
+export const AUTHSERV = "mx.cloudflare.net";
+
+/** A header's authserv-id: its first word, before the first `;`. */
+function authserv(value) {
+  return value.split(";")[0].trim().split(/\s+/)[0].toLowerCase();
+}
+
+/**
+ * Cloudflare's own Authentication-Results header, or "". A sender can add headers of that name too, with any
+ * results in them, so only the top one counts (the receiving server adds its own above the sender's), only when it
+ * names Cloudflare, and only when no other one claims to be Cloudflare's.
+ */
+export function cloudflareAuth(headers) {
+  const all = headers.filter(([k]) => k === "authentication-results").map(([, v]) => v);
+  if (!all.length || authserv(all[0]) !== AUTHSERV) return "";
+  return all.filter((v) => authserv(v) === AUTHSERV).length === 1 ? all[0] : "";
+}
+
+/** A raw message (a binary string) as {subject, from, date, messageId, auth, text, attachments}. */
 export function parse(binary) {
   const { headers } = split(binary);
   const found = { plain: [], html: [] };
@@ -136,9 +155,10 @@ export function parse(binary) {
   const text = found.plain.length ? found.plain.join("\n\n") : found.html.map(htmlText).join("\n\n");
   return {
     subject: words(header(headers, "subject")),
+    from: words(header(headers, "from")),
     date: header(headers, "date"),
     messageId: header(headers, "message-id"),
-    auth: headers.filter(([k]) => k === "authentication-results").map(([, v]) => v).join("; "),
+    auth: cloudflareAuth(headers),
     text: text.replace(/\r\n/g, "\n").trim(),
     attachments: files,
   };

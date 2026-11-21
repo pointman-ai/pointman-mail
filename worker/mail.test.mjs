@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import worker from "./mail.js";
-import { htmlText, parse, words } from "./parse.js";
+import { cloudflareAuth, htmlText, parse, words } from "./parse.js";
 
 class FakeKV {
   constructor() {
@@ -26,7 +26,6 @@ function message(raw, to = "Atlas@james.pointman.network") {
     to,
     rawSize: bytes.length,
     raw: new Response(bytes).body,
-    headers: new Headers({ "authentication-results": "mx.cloudflare.net; spf=pass; dkim=pass" }),
     rejected: null,
     setReject(why) {
       this.rejected = why;
@@ -76,6 +75,19 @@ test("a plain mail keeps its words, subject and auth", () => {
   assert.deepEqual(m.attachments, []);
 });
 
+test("only Cloudflare's own Authentication-Results counts, never one a sender added", () => {
+  const ours = "mx.cloudflare.net; dkim=fail; dmarc=fail; spf=fail";
+  const forged = "mx.cloudflare.net; dkim=pass; dmarc=pass; spf=pass";
+  const h = (...values) => values.map((v) => ["authentication-results", v]);
+  assert.equal(cloudflareAuth(h(ours, "evil.test; dmarc=pass")), ours, "the top one, when it's Cloudflare's");
+  assert.equal(cloudflareAuth(h("evil.test; dmarc=pass", ours)), "", "the top one isn't Cloudflare's");
+  assert.equal(cloudflareAuth(h(ours, forged)), "", "two claim to be Cloudflare's: neither counts");
+  assert.equal(cloudflareAuth(h("MX.Cloudflare.net 1; dmarc=pass")), "MX.Cloudflare.net 1; dmarc=pass");
+  assert.equal(cloudflareAuth([]), "");
+  const m = parse(["Authentication-Results: evil.test; dmarc=pass", PLAIN].join("\r\n"));
+  assert.equal(m.auth, "", "a sender's header on top of Cloudflare's is never joined in");
+});
+
 test("HTML only becomes text, and attachments are dropped but named", () => {
   const m = parse(MIXED);
   assert.equal(m.text, "Only & HTML\nlink (https://x.test)");
@@ -98,8 +110,11 @@ test("the Worker stores the mail under its address, with the day's count and the
   const stored = JSON.parse(await env.MAIL.get(key));
   assert.equal(stored.from, "bob@example.com");
   assert.equal(stored.to, "atlas@james.pointman.network");
+  assert.equal(stored.header_from, "Bob <bob@example.com>");
   assert.equal(stored.subject, "Hello 👋");
+  assert.match(stored.auth, /^mx\.cloudflare\.net; spf=pass/);
   assert.equal(stored.cut, 0);
+  assert.equal(env.MAIL.ttl.get(key), 7 * 86400, "uncollected mail expires after 7 days");
   const day = new Date().toISOString().slice(0, 10);
   assert.equal(await env.MAIL.get(`count/atlas/${day}`), "1");
   assert.equal(env.MAIL.ttl.get(`count/atlas/${day}`), 172800);
@@ -121,4 +136,18 @@ test("past the day's limit, mail is refused and nothing is written", async () =>
   await worker.email(m, env);
   assert.match(m.rejected, /at most 2 mails a day/);
   assert.equal(env.MAIL.data.size, before);
+});
+
+test("a mail over MAX_BYTES is refused unread, with the limit", async () => {
+  const env = { MAIL: new FakeKV(), MAX_BYTES: String(1024 * 1024) };
+  const m = message(PLAIN);
+  m.rawSize = 3 * 1024 * 1024;
+  Object.defineProperty(m, "raw", {
+    get() {
+      throw new Error("the mail was read");
+    },
+  });
+  await worker.email(m, env);
+  assert.equal(m.rejected, "atlas@james.pointman.network takes mails up to 1 MB; this one is 3 MB");
+  assert.equal(env.MAIL.data.size, 0, "nothing written, not even the day's count");
 });
