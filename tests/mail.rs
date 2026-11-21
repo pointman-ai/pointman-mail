@@ -299,6 +299,9 @@ fn mail_is_posted_to_its_agent_as_outside_mail_then_deleted() {
     fake.st.lock().unwrap().rules.push(json!({"id": "rule9", "name": "pointman-mail echo thr_7",
         "matchers": [{"type": "literal", "field": "to", "value": "echo@james.pointman.network"}],
         "actions": [{"type": "worker", "value": ["pointman-mail"]}]}));
+    // the poll lists once when it starts (it has never listed), whenever its first tick falls: counted from after it
+    wait("the poll's first list", || fake.calls("GET", "/keys?") >= 1);
+    let started = fake.calls("GET", "/keys?");
     {
         let mut st = fake.st.lock().unwrap();
         let key = "mail/atlas/0000000000003-cc".to_string();
@@ -337,12 +340,13 @@ fn mail_is_posted_to_its_agent_as_outside_mail_then_deleted() {
     assert!(kv.contains_key("mail/released/0000000000005-ee"), "mail for an address nobody holds is never deleted");
     std::thread::sleep(Duration::from_millis(800));
     assert_eq!(mails(), 1, "posted once");
+    let lists = fake.calls("GET", "/keys?") - started;
+    assert_eq!(lists, 1, "listed once when mail/latest changed, not every poll");
+    assert!(fake.calls("GET", "values/mail%2Flatest") >= 3, "mail/latest is what each poll reads");
     let status = node.run("mail.status", json!({})).unwrap();
     let text = status.result["text"].as_str().unwrap();
     assert!(text.contains("1 mails for addresses with no claim, kept in KV until they expire (7 days)"), "{text}");
-    let lists = fake.calls("GET", "/keys?");
-    assert!(lists <= 2, "listed only when mail/latest changed, not every poll: {lists}");
-    assert!(fake.calls("GET", "values/mail%2Flatest") >= 3, "mail/latest is what each poll reads");
+    assert_eq!(fake.calls("GET", "/keys?") - started, 2, "mail.status lists once, to count what's waiting");
 }
 
 #[test]
