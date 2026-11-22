@@ -474,9 +474,10 @@ dependencies = [
 
 [[package]]
 name = "mail"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
+ "base64",
  "buffa",
  "pointman-extension",
  "regex",

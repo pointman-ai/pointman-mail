@@ -49,8 +49,20 @@ impl std::fmt::Debug for Creds {
 }
 
 impl Creds {
+    /// What the node hands over is the vault's record as it was sealed: `{"kind":"env","vars":{"mail.cloudflare":…}}`
+    /// from `/mail add`'s form, or `{"kind":"file","data":<base64>}` from a stored file. Other text is read as it is.
     pub fn parse(value: &str) -> Option<Creds> {
-        let parts: Vec<&str> = value.split_whitespace().collect();
+        use base64::Engine;
+        let text = match serde_json::from_str::<serde_json::Value>(value) {
+            Ok(r) if r["kind"] == "env" => r["vars"].get(ITEM)?.as_str()?.to_string(),
+            Ok(r) if r["kind"] == "file" => {
+                let data = base64::engine::general_purpose::STANDARD.decode(r["data"].as_str()?).ok()?;
+                String::from_utf8(data).ok()?
+            }
+            Ok(_) => return None,
+            Err(_) => value.to_string(),
+        };
+        let parts: Vec<&str> = text.split_whitespace().collect();
         let hex = |s: &str| s.len() == 32 && s.chars().all(|c| c.is_ascii_hexdigit());
         let tokenish =
             |s: &str| (32..=200).contains(&s.len()) && s.chars().all(|c| c.is_ascii_alphanumeric() || "_-".contains(c));
@@ -131,6 +143,27 @@ mod tests {
         assert!(!format!("{c:?}").contains("tttt"), "the token is never in a debug line");
         assert!(Creds::parse("short a b").is_none());
         assert!(Creds::parse(&format!("{} {}", "t".repeat(40), "a".repeat(32))).is_none());
+    }
+
+    #[test]
+    fn creds_come_from_the_vaults_record_a_form_or_a_stored_file() {
+        use base64::Engine;
+        let line = format!("{} {} {}", "t".repeat(40), "a".repeat(32), "b".repeat(32));
+        let b64 = |s: &str| base64::engine::general_purpose::STANDARD.encode(s);
+        let form = serde_json::json!({"kind": "env", "vars": {ITEM: line}}).to_string();
+        let file = serde_json::json!({"kind": "file", "name": "cf.txt", "data": b64(&format!("{line}\n"))}).to_string();
+        for record in [&line, &form, &file] {
+            assert_eq!(Creds::parse(record).map(|c| c.token), Some("t".repeat(40)), "{record}");
+        }
+        let refused = [
+            serde_json::json!({"kind": "file", "name": "cf.txt", "data": "not base64!"}),
+            serde_json::json!({"kind": "file", "name": "cf.txt", "data": b64("just one word")}),
+            serde_json::json!({"kind": "env", "vars": {"OTHER": line}}),
+            serde_json::json!({"kind": "dir", "data": b64(&line)}),
+        ];
+        for record in refused {
+            assert!(Creds::parse(&record.to_string()).is_none(), "{record}");
+        }
     }
 
     #[test]

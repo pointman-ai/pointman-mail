@@ -1,6 +1,6 @@
 [package]
 name = "mail"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "An email address for each agent on Pointman, receiving only: Cloudflare Email Routing to an Email Worker, posted to the agent from Workers KV."
 license = "MIT"
@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+base64 = "0.22"
 # buffa's code for proto/mail/v1/mail.proto (build.rs) uses it: keep it at the SDK's version
 buffa = { version = "0.9.2", features = ["json"] }
 pointman-extension = { git = "https://github.com/pointman-ai/pointman-extension", tag = "v0.5.5" }
