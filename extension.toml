@@ -14,7 +14,7 @@
 [extension]
 id = "mail"
 name = "Mail"
-version = "0.1.2"
+version = "0.1.3"
 publisher = "aurelio"
 summary = "An email address for each agent, receiving only: mail to <handle>@<domain> is posted to the agent as outside mail, through Cloudflare."
 node = ">=0.4.12"

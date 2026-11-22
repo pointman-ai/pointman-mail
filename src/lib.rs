@@ -18,6 +18,9 @@ pub const PARSE_JS: &str = include_str!("../worker/parse.js");
 
 /// The vault item with the Cloudflare API token, account id and zone id.
 pub const ITEM: &str = "mail.cloudflare";
+/// The prefix the node lets this extension list the vault's names under: its own id and a dot. A longer one (the
+/// item's whole name) is refused.
+pub const OWN_PREFIX: &str = "mail.";
 /// The Worker's name and its KV namespace's title, unless the `worker` setting says another.
 pub const WORKER: &str = "pointman-mail";
 /// Mails a day an address takes, and a mail's characters kept, unless the settings say.
