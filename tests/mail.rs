@@ -178,7 +178,28 @@ impl Fake {
 
 type Posts = Arc<Mutex<Vec<Value>>>;
 
+/// The node's secret.list, as node/src/extensions/manifest.rs's `lists_secrets` has it for this manifest: only under
+/// the extension's own id and a dot (its permissions name one item, so cover no other prefix), and only the names
+/// it may open. The SDK's stand-in lets any prefix through, which hid a poll that listed under the item's whole name.
+fn as_the_node(p: Value) -> anyhow::Result<Value> {
+    let prefix = p["prefix"].as_str().unwrap_or_default();
+    if prefix != "mail." {
+        anyhow::bail!("secret.list takes a prefix mail may list: \"mail.\"");
+    }
+    Ok(json!({"names": ["mail.cloudflare"]}))
+}
+
 fn node(fake: &Fake, token: &str, domain: &str, every_ms: u64) -> (StandIn, Posts) {
+    node_listing(fake, token, domain, every_ms, as_the_node)
+}
+
+fn node_listing(
+    fake: &Fake,
+    token: &str,
+    domain: &str,
+    every_ms: u64,
+    list: fn(Value) -> anyhow::Result<Value>,
+) -> (StandIn, Posts) {
     let posts: Posts = Arc::default();
     let pp = posts.clone();
     let node = StandIn::new(env!("CARGO_MANIFEST_DIR"))
@@ -188,6 +209,7 @@ fn node(fake: &Fake, token: &str, domain: &str, every_ms: u64) -> (StandIn, Post
         .env("CLOUDFLARE_API_BASE", format!("{}/client/v4", fake.url))
         .env("MAIL_DOH_URL", format!("{}/dns-query", fake.url))
         .env("MAIL_EVERY_MS", every_ms.to_string())
+        .method("secret.list", list)
         .method("agents.sessions", |_| {
             Ok(json!({"agents": [{"agent": {"name": "atlas"}, "sessionId": "s1"}, {"agent": {"name": "scene"}, "sessionId": "s2"}]}))
         })
@@ -416,4 +438,32 @@ fn a_token_cloudflare_refuses_is_said_and_never_logged() {
 
 fn node_without_domain(fake: &Fake) -> (StandIn, Posts) {
     node(fake, TOKEN, "", 3_600_000)
+}
+
+#[test]
+fn a_list_the_node_refuses_is_the_polls_problem_said_once_not_no_key() {
+    let fake = Fake::start();
+    let (node, posts) = node_listing(&fake, TOKEN, DOMAIN, 100, |_| anyhow::bail!("the vault is locked"));
+    node.run("mail.setup", json!({})).unwrap();
+    node.run("mail.claim", json!({"agent": "atlas", "thread": "71335"})).unwrap();
+    {
+        let mut st = fake.st.lock().unwrap();
+        st.kv.insert("mail/atlas/0000000000007-gg".into(), stored("atlas@james.pointman.network", "x", "y"));
+        st.kv.insert("mail/latest".into(), "mail/atlas/0000000000007-gg".into());
+    }
+    wait("the poll's problem in the log", || node.log().contains("collecting mail:"));
+    // mail.setup clears the poll's problem, so it may be said once before setup and once after: then never again
+    std::thread::sleep(Duration::from_millis(300));
+    let said = node.log().matches("collecting mail:").count();
+    std::thread::sleep(Duration::from_millis(800));
+    let log = node.log();
+    assert_eq!(log.matches("collecting mail:").count(), said, "not said again every poll: {log}");
+    assert!(log.contains("the vault is locked"), "{log}");
+    assert!(posts.lock().unwrap().iter().all(|p| !p["text"].as_str().unwrap().contains("Mail to")));
+    let status = node.run("mail.status", json!({})).unwrap();
+    let text = status.result["text"].as_str().unwrap();
+    assert!(text.contains("Collecting mail: the node didn't list the vault's mail keys"), "{text}");
+    let health = node.call("health.check", json!({})).unwrap();
+    let delivery = health["parts"].as_array().unwrap().iter().find(|p| p["id"] == "delivery").unwrap().clone();
+    assert_eq!(delivery["state"], "STATE_FAILING", "{health}");
 }

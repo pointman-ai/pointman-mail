@@ -19,7 +19,7 @@ use mail::v1::{
 use mail::words::{self, Stored};
 use mail::{
     and, handle_ok, key_local, rule_name, thread_number, Claim, Creds, ADDRESS_MAX, DAILY, FREE_MAILS_A_DAY, ITEM,
-    LATEST, MAX_CHARS, PARSE_JS, RULE_NAME_MAX, WORKER, WORKER_JS,
+    LATEST, MAX_CHARS, OWN_PREFIX, PARSE_JS, RULE_NAME_MAX, WORKER, WORKER_JS,
 };
 use pointman_extension::protocol::{
     AgentsSessionsRequest, BoardPostRequest, HealthCheckRequest, HealthCheckResponse, HealthFixRequest,
@@ -410,8 +410,13 @@ fn tick(x: &Ext) {
 /// Whether it listed KV's keys (and so tried every waiting mail).
 fn collect(x: &Ext) -> anyhow::Result<bool> {
     let conf = x.conf();
-    if conf.domain.is_empty() || x.h.secrets(ITEM).map(|s| s.is_empty()).unwrap_or(true) {
+    if conf.domain.is_empty() {
         return Ok(true); // not set up: status and health say so
+    }
+    // a list that fails is the poll's problem, said by status and health, never read as "no key yet"
+    let names = x.h.secrets(OWN_PREFIX).map_err(|e| anyhow!("the node didn't list the vault's mail keys: {e:#}"))?;
+    if !names.iter().any(|n| n == ITEM) {
+        return Ok(true); // no key yet: status and health say so
     }
     x.cf(|cf| {
         let ns = x.namespace(cf, &conf.worker)?;
