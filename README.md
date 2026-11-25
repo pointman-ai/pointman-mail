@@ -1,7 +1,7 @@
 # pointman-mail
 
 A Pointman extension that gives each agent an email address, `<handle>@<domain>`, for receiving only. Mail sent to
-it is posted to the agent in a thread it chose, as outside mail: unsigned, and never a person's instruction.
+it is posted to the agent in a channel it chose, as outside mail: unsigned, and never a person's instruction.
 
 ```
 sender ──▶ Cloudflare Email Routing ──▶ Email Worker (worker/) ──▶ Workers KV ──▶ this extension ──▶ the board

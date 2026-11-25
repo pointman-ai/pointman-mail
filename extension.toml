@@ -1,5 +1,5 @@
 # Mail on Pointman, receiving only: each agent may claim an address, <handle>@<domain> (the `domain` setting), and
-# mail sent to it is posted to the agent in the thread it chose, as outside mail: unsigned, never a person's
+# mail sent to it is posted to the agent in the channel it chose, as outside mail: unsigned, never a person's
 # instruction. Nothing is ever sent.
 #
 # Cloudflare's Email Routing takes the mail: one routing rule per claimed address hands it to an Email Worker
@@ -44,14 +44,14 @@ placeholder = "token account-id zone-id"
 
 [[commands]]
 kind = "mail.claim"
-title = "Claim an agent's own address (agent, thread)"
+title = "Claim an agent's own address (agent, channel)"
 slash = "claim"
-summary = "The address <agent>@<domain>, its mail posted in a thread: claim only your own"
+summary = "The address <agent>@<domain>, its mail posted in a channel: claim only your own"
 
 # From ClaimParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
 [commands.params]
 type = "object"
-description = "mail.claim: an agent's own address, <handle>@<domain>, with its mail posted in a thread. Claim only your own."
+description = "mail.claim: an agent's own address, <handle>@<domain>, with its mail posted in a channel. Claim only your own."
 additionalProperties = false
 
 [commands.params.properties.agent]
@@ -61,12 +61,12 @@ minLength = 1
 maxLength = 32
 pattern = "^[a-z0-9][a-z0-9_-]*$"
 
-[commands.params.properties.thread]
+[commands.params.properties.channel]
 type = "string"
-description = "The thread its mail is posted in (thr_123 or 123). Everyone in that thread reads the mail: pick one meant for it."
+description = "The channel its mail is posted in (ch_123 or 123). Everyone in that channel reads the mail: pick one meant for it."
 minLength = 1
 maxLength = 24
-pattern = "^(thr_)?[1-9][0-9]*$"
+pattern = "^(ch_)?[1-9][0-9]*$"
 
 [[commands]]
 kind = "mail.release"
@@ -91,12 +91,12 @@ pattern = "^[a-z0-9][a-z0-9_-]*$"
 kind = "mail.addresses"
 title = "Agents with an address"
 slash = "addresses"
-summary = "Every claimed address, its agent and the thread its mail goes to"
+summary = "Every claimed address, its agent and the channel its mail goes to"
 
 # From AddressesParams in proto/mail/v1/mail.proto: `pointman-extension manifest write`
 [commands.params]
 type = "object"
-description = "mail.addresses: every agent with an address, and the thread its mail goes to."
+description = "mail.addresses: every agent with an address, and the channel its mail goes to."
 additionalProperties = false
 
 [[commands]]

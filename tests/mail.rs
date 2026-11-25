@@ -1,7 +1,7 @@
 //! The extension's commands and its poll under a stand-in node, against a fake Cloudflare on a local port
 //! (CLOUDFLARE_API_BASE, MAIL_DOH_URL): the Worker and its KV namespace deployed, addresses claimed and released as
 //! routing rules, and mail the Worker stored posted to its agent and deleted. No real Cloudflare is called. The
-//! stand-in node refuses posts to thr_404, as the board does a thread the extension can't post in.
+//! stand-in node refuses posts to ch_404, as the board does a channel the extension can't post in.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -214,8 +214,8 @@ fn node_listing(
             Ok(json!({"agents": [{"agent": {"name": "atlas"}, "sessionId": "s1"}, {"agent": {"name": "scene"}, "sessionId": "s2"}]}))
         })
         .method("board.post", move |p: Value| {
-            if p["thread"]["id"] == "thr_404" {
-                anyhow::bail!("no such thread");
+            if p["channel"]["id"] == "ch_404" {
+                anyhow::bail!("no such channel");
             }
             pp.lock().unwrap().push(p);
             Ok(json!({"post": {"id": "post_9"}}))
@@ -269,37 +269,37 @@ fn setup_deploys_the_worker_with_its_kv_namespace_once() {
 fn an_agent_claims_its_address_once_and_releases_it_with_its_mail() {
     let fake = Fake::start();
     let (node, posts) = node(&fake, TOKEN, DOMAIN, 3_600_000);
-    let early = node.run("mail.claim", json!({"agent": "atlas", "thread": "thr_71335"})).unwrap_err();
+    let early = node.run("mail.claim", json!({"agent": "atlas", "channel": "ch_71335"})).unwrap_err();
     assert!(early.message.contains("/mail setup"), "{}", early.message);
     node.run("mail.setup", json!({})).unwrap();
 
-    let stranger = node.run("mail.claim", json!({"agent": "nobody", "thread": "1"})).unwrap_err();
+    let stranger = node.run("mail.claim", json!({"agent": "nobody", "channel": "1"})).unwrap_err();
     assert!(stranger.message.contains("isn't an agent this machine runs"), "{}", stranger.message);
 
-    let nowhere = node.run("mail.claim", json!({"agent": "atlas", "thread": "thr_404"})).unwrap_err();
-    assert!(nowhere.message.contains("couldn't post in thr_404"), "{}", nowhere.message);
-    assert!(fake.st.lock().unwrap().rules.is_empty(), "no rule when the thread can't be told");
+    let nowhere = node.run("mail.claim", json!({"agent": "atlas", "channel": "ch_404"})).unwrap_err();
+    assert!(nowhere.message.contains("couldn't post in ch_404"), "{}", nowhere.message);
+    assert!(fake.st.lock().unwrap().rules.is_empty(), "no rule when the channel can't be told");
 
-    let done = node.run("mail.claim", json!({"agent": "atlas", "thread": "thr_71335"})).unwrap();
+    let done = node.run("mail.claim", json!({"agent": "atlas", "channel": "ch_71335"})).unwrap();
     assert_eq!(done.result["address"], "atlas@james.pointman.network");
     let said = posts.lock().unwrap().clone();
     assert_eq!(said.len(), 1, "{said:?}");
-    assert_eq!(said[0]["thread"]["id"], "thr_71335");
+    assert_eq!(said[0]["channel"]["id"], "ch_71335");
     let line = said[0]["text"].as_str().unwrap();
     assert!(line.starts_with("`atlas@james.pointman.network` takes mail for atlas from now on."), "{line}");
     assert!(!line.contains("@atlas"), "the line wakes nobody: {line}");
     let rule = fake.st.lock().unwrap().rules[0].clone();
     assert_eq!(rule["matchers"], json!([{"type": "literal", "field": "to", "value": "atlas@james.pointman.network"}]));
     assert_eq!(rule["actions"], json!([{"type": "worker", "value": ["pointman-mail"]}]));
-    assert_eq!(rule["name"], "pointman-mail atlas thr_71335");
+    assert_eq!(rule["name"], "pointman-mail atlas ch_71335");
 
-    let twice = node.run("mail.claim", json!({"agent": "atlas", "thread": "5"})).unwrap_err();
-    assert!(twice.message.contains("claimed already (by @atlas, posting in thr_71335)"), "{}", twice.message);
+    let twice = node.run("mail.claim", json!({"agent": "atlas", "channel": "5"})).unwrap_err();
+    assert!(twice.message.contains("claimed already (by @atlas, posting in ch_71335)"), "{}", twice.message);
 
     let list = node.run("mail.addresses", json!({})).unwrap();
     assert_eq!(
         list.result["addresses"],
-        json!([{"agent": "atlas", "address": "atlas@james.pointman.network", "thread": "thr_71335"}])
+        json!([{"agent": "atlas", "address": "atlas@james.pointman.network", "channel": "ch_71335"}])
     );
 
     fake.st.lock().unwrap().kv.insert("mail/atlas/0000000000001-aa".into(), stored("atlas@x", "s", "t"));
@@ -316,9 +316,9 @@ fn mail_is_posted_to_its_agent_as_outside_mail_then_deleted() {
     let fake = Fake::start();
     let (node, posts) = node(&fake, TOKEN, DOMAIN, 200);
     node.run("mail.setup", json!({})).unwrap();
-    node.run("mail.claim", json!({"agent": "atlas", "thread": "71335"})).unwrap();
+    node.run("mail.claim", json!({"agent": "atlas", "channel": "71335"})).unwrap();
     // claimed on another machine: its agent isn't one this one runs
-    fake.st.lock().unwrap().rules.push(json!({"id": "rule9", "name": "pointman-mail echo thr_7",
+    fake.st.lock().unwrap().rules.push(json!({"id": "rule9", "name": "pointman-mail echo ch_7",
         "matchers": [{"type": "literal", "field": "to", "value": "echo@james.pointman.network"}],
         "actions": [{"type": "worker", "value": ["pointman-mail"]}]}));
     // the poll lists once when it starts (it has never listed), whenever its first tick falls: counted from after it
@@ -339,7 +339,7 @@ fn mail_is_posted_to_its_agent_as_outside_mail_then_deleted() {
     wait("the mail's post", || mails() == 1);
     wait("its delete", || !fake.st.lock().unwrap().kv.contains_key("mail/atlas/0000000000003-cc"));
     let post = posts.lock().unwrap().last().unwrap().clone();
-    assert_eq!(post["thread"]["id"], "thr_71335");
+    assert_eq!(post["channel"]["id"], "ch_71335");
     let text = post["text"].as_str().unwrap();
     assert_eq!(
         text,
@@ -400,8 +400,8 @@ fn status_says_whats_missing_and_the_days_ceiling() {
 fn a_post_that_keeps_failing_waits_for_the_next_full_list() {
     let fake = Fake::start();
     let (node, posts) = node(&fake, TOKEN, DOMAIN, 100);
-    // a rule whose thread the extension can't post in (made before claims told the thread first)
-    fake.st.lock().unwrap().rules.push(json!({"id": "rule9", "name": "pointman-mail scene thr_404",
+    // a rule whose channel the extension can't post in (made before claims told the channel first)
+    fake.st.lock().unwrap().rules.push(json!({"id": "rule9", "name": "pointman-mail scene ch_404",
         "matchers": [{"type": "literal", "field": "to", "value": "scene@james.pointman.network"}],
         "actions": [{"type": "worker", "value": ["pointman-mail"]}]}));
     {
@@ -418,7 +418,7 @@ fn a_post_that_keeps_failing_waits_for_the_next_full_list() {
     assert!(posts.lock().unwrap().is_empty());
     assert!(fake.st.lock().unwrap().kv.contains_key("mail/scene/0000000000006-ff"), "kept for the next try");
     let status = node.run("mail.status", json!({})).unwrap();
-    assert!(status.result["text"].as_str().unwrap().contains("didn't reach thr_404"), "{}", status.result["text"]);
+    assert!(status.result["text"].as_str().unwrap().contains("didn't reach ch_404"), "{}", status.result["text"]);
 }
 
 #[test]
@@ -432,7 +432,7 @@ fn a_token_cloudflare_refuses_is_said_and_never_logged() {
     assert!(!node.log().contains("WRONGtoken") && !node.log().contains(TOKEN));
 
     let (none, _) = node_without_domain(&fake);
-    let e = none.run("mail.claim", json!({"agent": "atlas", "thread": "1"})).unwrap_err();
+    let e = none.run("mail.claim", json!({"agent": "atlas", "channel": "1"})).unwrap_err();
     assert!(e.message.contains("domain setting"), "{}", e.message);
 }
 
@@ -445,7 +445,7 @@ fn a_list_the_node_refuses_is_the_polls_problem_said_once_not_no_key() {
     let fake = Fake::start();
     let (node, posts) = node_listing(&fake, TOKEN, DOMAIN, 100, |_| anyhow::bail!("the vault is locked"));
     node.run("mail.setup", json!({})).unwrap();
-    node.run("mail.claim", json!({"agent": "atlas", "thread": "71335"})).unwrap();
+    node.run("mail.claim", json!({"agent": "atlas", "channel": "71335"})).unwrap();
     {
         let mut st = fake.st.lock().unwrap();
         st.kv.insert("mail/atlas/0000000000007-gg".into(), stored("atlas@james.pointman.network", "x", "y"));
