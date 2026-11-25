@@ -78,35 +78,35 @@ impl Creds {
     }
 }
 
-/// A claimed address: Cloudflare's routing rule for it, which names its agent and its thread.
+/// A claimed address: Cloudflare's routing rule for it, which names its agent and its channel.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Claim {
     pub rule: String,
     pub agent: String,
     pub address: String,
-    pub thread: i64,
+    pub channel: i64,
 }
 
-/// The rule's name, which keeps who the address is for and where its mail is posted: `pointman-mail atlas thr_123`.
-pub fn rule_name(agent: &str, thread: i64) -> String {
-    format!("pointman-mail {agent} thr_{thread}")
+/// The rule's name, which keeps who the address is for and where its mail is posted: `pointman-mail atlas ch_123`.
+pub fn rule_name(agent: &str, channel: i64) -> String {
+    format!("pointman-mail {agent} ch_{channel}")
 }
 
-/// `rule_name`'s agent and thread.
+/// `rule_name`'s agent and channel.
 pub fn parse_rule_name(name: &str) -> Option<(String, i64)> {
     let mut parts = name.split_whitespace();
     if parts.next()? != "pointman-mail" {
         return None;
     }
     let agent = parts.next()?.to_string();
-    let thread = parts.next()?.strip_prefix("thr_")?.parse().ok().filter(|t| *t > 0)?;
-    parts.next().is_none().then_some((agent, thread))
+    let channel = parts.next()?.strip_prefix("ch_")?.parse().ok().filter(|t| *t > 0)?;
+    parts.next().is_none().then_some((agent, channel))
 }
 
-/// A thread as the claim gives it, `thr_123` or `123`.
-pub fn thread_number(thread: &str) -> Option<i64> {
-    let t = thread.trim();
-    t.strip_prefix("thr_").unwrap_or(t).parse().ok().filter(|n| *n > 0)
+/// A channel as the claim gives it, `ch_123` or `123`.
+pub fn channel_number(channel: &str) -> Option<i64> {
+    let t = channel.trim();
+    t.strip_prefix("ch_").unwrap_or(t).parse().ok().filter(|n| *n > 0)
 }
 
 /// A handle as the board reads a mention: lowercase letters, digits, `_` and `-`, at most 32.
@@ -172,14 +172,14 @@ mod tests {
     #[test]
     fn a_rule_name_keeps_its_agent_and_thread() {
         let name = rule_name("atlas", 71335);
-        assert_eq!(name, "pointman-mail atlas thr_71335");
+        assert_eq!(name, "pointman-mail atlas ch_71335");
         assert_eq!(parse_rule_name(&name), Some(("atlas".into(), 71335)));
         assert!(rule_name(&"a".repeat(32), i64::MAX).len() <= RULE_NAME_MAX);
         assert_eq!(parse_rule_name("Send to bob rule"), None);
-        assert_eq!(parse_rule_name("pointman-mail atlas thr_0"), None);
-        assert_eq!(thread_number("thr_12"), Some(12));
-        assert_eq!(thread_number("12"), Some(12));
-        assert_eq!(thread_number("x"), None);
+        assert_eq!(parse_rule_name("pointman-mail atlas ch_0"), None);
+        assert_eq!(channel_number("ch_12"), Some(12));
+        assert_eq!(channel_number("12"), Some(12));
+        assert_eq!(channel_number("x"), None);
     }
 
     #[test]

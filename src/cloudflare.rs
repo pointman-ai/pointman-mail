@@ -293,7 +293,7 @@ impl Cloudflare<'_> {
     }
 
     /// The addresses claimed through this extension: rules that send one address on `domain` to `worker`, and whose
-    /// name says its agent and thread.
+    /// name says its agent and channel.
     pub fn claims(&self, worker: &str, domain: &str) -> anyhow::Result<Vec<Claim>> {
         let at = format!("@{domain}");
         Ok(self
@@ -301,8 +301,8 @@ impl Cloudflare<'_> {
             .into_iter()
             .filter(|r| r.kind == "worker" && r.value == worker && r.to.ends_with(&at))
             .filter_map(|r| {
-                let (agent, thread) = parse_rule_name(&r.name)?;
-                (r.to == format!("{agent}{at}")).then_some(Claim { rule: r.id, agent, address: r.to, thread })
+                let (agent, channel) = parse_rule_name(&r.name)?;
+                (r.to == format!("{agent}{at}")).then_some(Claim { rule: r.id, agent, address: r.to, channel })
             })
             .collect())
     }

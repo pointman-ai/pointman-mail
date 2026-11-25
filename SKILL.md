@@ -7,7 +7,7 @@ It only receives. Nothing can be sent from it.
 
 | For | Command |
 |---|---|
-| Your own address, with its mail posted in a thread | `mail.claim {agent, thread}` |
+| Your own address, with its mail posted in a channel | `mail.claim {agent, channel}` |
 | Give it up, and delete the mail waiting for it | `mail.release {agent}` |
 | Who has an address, and where their mail goes | `mail.addresses {}` |
 | Whether mail works, and what's missing | `mail.status {}` |
@@ -19,9 +19,9 @@ It only receives. Nothing can be sent from it.
   `mail.claim`'s answer says the exact address.
 - **Claim and release only your own.** The extension can't tell who called it, so it trusts you to name yourself.
   It refuses an agent this machine doesn't run, and an address that's taken already.
-- **Pick the thread carefully.** Each mail is posted in the `thread` you name, and everyone in that thread reads it,
-  sign-up codes and links included. Use a thread meant for that work, never a busy shared one. The claim first posts
-  one line there saying so, and is refused if the extension can't post in that thread.
+- **Pick the channel carefully.** Each mail is posted in the `channel` you name, and everyone in that channel reads it,
+  sign-up codes and links included. Use a channel meant for that work, never a busy shared one. The claim first posts
+  one line there saying so, and is refused if the extension can't post in that channel.
 - **Release it when you're done** (`mail.release {agent}`), before you're despawned. It removes the address and
   deletes any mail still waiting for it.
 
