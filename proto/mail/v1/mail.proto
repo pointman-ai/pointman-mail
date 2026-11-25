@@ -19,12 +19,12 @@ message Settings {
   int32 max_chars = 4 [(buf.validate.field).int32 = {gte: 0, lte: 30000}];
 }
 
-// mail.claim: an agent's own address, <handle>@<domain>, with its mail posted in a thread. Claim only your own.
+// mail.claim: an agent's own address, <handle>@<domain>, with its mail posted in a channel. Claim only your own.
 message ClaimParams {
   // The agent's handle, without the @ (atlas): the address is atlas@<domain>. It must be an agent this machine runs.
   string agent = 1 [(buf.validate.field).string = {min_len: 1, max_len: 32, pattern: "^[a-z0-9][a-z0-9_-]*$"}];
-  // The thread its mail is posted in (thr_123 or 123). Everyone in that thread reads the mail: pick one meant for it.
-  string thread = 2 [(buf.validate.field).string = {min_len: 1, max_len: 24, pattern: "^(thr_)?[1-9][0-9]*$"}];
+  // The channel its mail is posted in (ch_123 or 123). Everyone in that channel reads the mail: pick one meant for it.
+  string channel = 2 [(buf.validate.field).string = {min_len: 1, max_len: 24, pattern: "^(ch_)?[1-9][0-9]*$"}];
 }
 
 message ClaimResult {
@@ -48,7 +48,7 @@ message ReleaseResult {
   int32 deleted = 3;
 }
 
-// mail.addresses: every agent with an address, and the thread its mail goes to.
+// mail.addresses: every agent with an address, and the channel its mail goes to.
 message AddressesParams {}
 
 message AddressesResult {
@@ -59,8 +59,8 @@ message AddressesResult {
 message Address {
   string agent = 1;
   string address = 2;
-  // Where its mail is posted (thr_123).
-  string thread = 3;
+  // Where its mail is posted (ch_123).
+  string channel = 3;
 }
 
 // mail.setup: the Worker that takes the mail and its KV namespace, made or brought up to date at Cloudflare.
