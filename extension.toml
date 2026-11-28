@@ -14,10 +14,10 @@
 [extension]
 id = "mail"
 name = "Mail"
-version = "0.2.0"
+version = "0.3.0"
 publisher = "aurelio"
 summary = "An email address for each agent, receiving only: mail to <handle>@<domain> is posted to the agent as outside mail, through Cloudflare."
-node = ">=0.5.0"
+node = ">=0.6,<1"
 platforms = ["macos-arm64", "macos-x86_64", "linux-x86_64", "linux-arm64"]
 
 [run]
@@ -26,7 +26,7 @@ runtime = "binary"
 
 [behavior]
 skill = "SKILL.md"
-clients = ["claude", "codex", "gemini"]
+harnesses = ["claude", "codex", "gemini"]
 
 [permissions]
 network = true                   # Cloudflare's API, and DNS over HTTPS for the domain's mail records
